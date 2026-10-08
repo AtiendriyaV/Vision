@@ -8,6 +8,7 @@ export interface ArticleMetadata {
   author?: string;
   coverImage?: string;
   publishedAt?: string;
+  mediumUrl?: string;
 }
 
 export interface Article extends ArticleMetadata {
@@ -23,4 +24,5 @@ export interface PublishArticlePayload {
   readTime?: string;
   author?: string;
   passcode?: string;
+  mediumUrl?: string;
 }

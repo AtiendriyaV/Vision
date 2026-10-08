@@ -21,7 +21,7 @@ import { Article } from '@/lib/types';
 import { PythonConsole } from './PythonConsole';
 
 interface AdminPortalProps {
-  onArticlePublished: (article: Article) => void;
+  onArticlePublished: (article?: Article) => void;
   onReturnHome: () => void;
   onDeleteArticle?: (slug: string) => void;
   initialArticle?: Article | null;
@@ -81,6 +81,28 @@ Summarize your variants perceptions and conclusions in three clear points.
   const [showGatePassword, setShowGatePassword] = useState(false);
   const [gateError, setGateError] = useState('');
   const [isVerifyingGate, setIsVerifyingGate] = useState(false);
+  const [isSyncingMedium, setIsSyncingMedium] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  const handleSyncMedium = async () => {
+    setIsSyncingMedium(true);
+    setSyncStatus(null);
+    try {
+      const res = await fetch('/api/sync-medium', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSyncStatus(`Exported ${data.totalMediumArticles} Medium stories! Total: ${data.totalArticlesCount}`);
+        if (onArticlePublished) onArticlePublished();
+      } else {
+        setSyncStatus(`Sync failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setSyncStatus(`Sync error: ${err.message}`);
+    } finally {
+      setIsSyncingMedium(false);
+      setTimeout(() => setSyncStatus(null), 6000);
+    }
+  };
 
   const handleVerifyGate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -392,6 +414,17 @@ Summarize your variants perceptions and conclusions in three clear points.
               </button>
             )}
 
+            {/* Sync Medium Button */}
+            <button
+              onClick={handleSyncMedium}
+              disabled={isSyncingMedium}
+              className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#f5f5f4] border border-[#d6d3d1] hover:border-[#1c1917] text-[#1c1917] text-xs font-mono transition-colors cursor-pointer disabled:opacity-50"
+              title="Export and sync all public articles from https://medium.com/@atiendriyaverma"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#15803d] ${isSyncingMedium ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">{isSyncingMedium ? 'Syncing...' : 'Sync Medium'}</span>
+            </button>
+
             {/* Primary Action Button */}
             <button
               onClick={handlePublish}
@@ -425,6 +458,22 @@ Summarize your variants perceptions and conclusions in three clear points.
           </div>
         </div>
       </div>
+
+      {/* Sync Status Banner */}
+      {syncStatus && (
+        <div className="px-6 py-3 border-b text-xs flex items-center justify-between bg-emerald-50 border-emerald-200 text-emerald-900">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">{syncStatus}</span>
+          </div>
+          <button
+            onClick={() => setSyncStatus(null)}
+            className="underline text-[11px] cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Status Bar */}
       {publishResult.type !== 'idle' && (

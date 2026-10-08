@@ -8,8 +8,10 @@ import {
   saveArticle, 
   getArticleBySlug, 
   deleteArticle, 
-  calculateReadTime 
+  calculateReadTime,
+  refreshCache 
 } from './lib/articleStore';
+import { exportMediumArticles } from './lib/mediumSync';
 import { PublishArticlePayload } from './lib/types';
 
 dotenv.config();
@@ -102,6 +104,7 @@ app.post('/api/publish', async (req, res) => {
       excerpt: finalExcerpt,
       readTime,
       author: payload.author || 'Atiendriya Verma',
+      mediumUrl: payload.mediumUrl,
     });
 
     res.json(result);
@@ -110,6 +113,21 @@ app.post('/api/publish', async (req, res) => {
     res.status(500).json({
       success: false,
       message: err?.message || 'Internal server error during publishing',
+    });
+  }
+});
+
+// Synchronize / Export Medium Articles
+app.post('/api/sync-medium', async (req, res) => {
+  try {
+    const result = await exportMediumArticles();
+    refreshCache();
+    res.json(result);
+  } catch (err: any) {
+    console.error('Sync Medium error:', err);
+    res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to export/sync Medium articles',
     });
   }
 });

@@ -138,14 +138,18 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleArticlePublished = (savedArticle: Article) => {
-    const priorSlug = editingArticle?.slug;
-    setArticles((prev) => [
-      savedArticle, 
-      ...prev.filter((a) => a.slug !== savedArticle.slug && a.slug !== priorSlug)
-    ]);
-    setEditingArticle(null);
-    handleSelectArticle(savedArticle);
+  const handleArticlePublished = (savedArticle?: Article) => {
+    if (savedArticle) {
+      const priorSlug = editingArticle?.slug;
+      setArticles((prev) => [
+        savedArticle, 
+        ...prev.filter((a) => a.slug !== savedArticle.slug && a.slug !== priorSlug)
+      ]);
+      setEditingArticle(null);
+      handleSelectArticle(savedArticle);
+    } else {
+      loadArticles(true);
+    }
   };
 
   const handleArticleUpdated = (updatedArticle: Article) => {

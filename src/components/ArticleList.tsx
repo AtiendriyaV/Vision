@@ -125,6 +125,14 @@ export const ArticleList: React.FC<ArticleListProps> = ({
                 <span>{article.readTime}</span>
                 <span aria-hidden="true">·</span>
                 <span>By {article.author || 'Atiendriya Verma'}</span>
+                {article.mediumUrl && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-[#15803d] font-medium inline-flex items-center gap-1">
+                      Medium
+                    </span>
+                  </>
+                )}
               </div>
 
               {/* Title */}

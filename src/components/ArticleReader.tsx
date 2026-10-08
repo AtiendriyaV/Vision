@@ -203,6 +203,20 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
               <Bookmark className={`w-3.5 h-3.5 ${isBookmarked ? 'fill-current' : ''}`} />
             </button>
 
+            {/* Read on Medium */}
+            {article.mediumUrl && (
+              <a
+                href={article.mediumUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 hover:text-[#1c1917] border border-[#d6d3d1] bg-white transition-colors cursor-pointer flex items-center gap-1.5 text-[11px] font-mono text-[#1c1917]"
+                title="Open original post on Medium"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-[#15803d]" />
+                <span className="hidden sm:inline">Medium</span>
+              </a>
+            )}
+
             {/* Direct Edit Trigger (Admin Only) */}
             {isAdmin && (
               !isInlineEditing ? (
@@ -275,6 +289,20 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
             <span>{article.readTime}</span>
             <span aria-hidden="true">·</span>
             <span>By {article.author || 'Atiendriya Verma'}</span>
+            {article.mediumUrl && (
+              <>
+                <span aria-hidden="true">·</span>
+                <a
+                  href={article.mediumUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#15803d] hover:underline font-medium inline-flex items-center gap-1"
+                >
+                  <span>Medium Post</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </>
+            )}
           </div>
 
           {isAdmin && (
@@ -513,6 +541,19 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
               <Share2 className="w-3.5 h-3.5" />
               <span>{copiedLink ? 'Link Copied' : 'Share'}</span>
             </button>
+
+            {article.mediumUrl && (
+              <a
+                href={article.mediumUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-[#f5f5f4] border border-[#d6d3d1] text-xs font-mono text-[#1c1917] transition-colors"
+                title="Read original publication on Medium"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-[#15803d]" />
+                <span>Medium Original</span>
+              </a>
+            )}
           </div>
 
           <button

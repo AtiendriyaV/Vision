@@ -99,6 +99,14 @@ export async function getArticleBySlug(slug: string): Promise<Article | null> {
 }
 
 /**
+ * Reloads articles cache from data file or seed
+ */
+export function refreshCache(): Article[] {
+  initializeStorage();
+  return [...articlesCache];
+}
+
+/**
  * Creates or updates an article in the repository
  */
 export async function saveArticle(payload: {
@@ -110,13 +118,15 @@ export async function saveArticle(payload: {
   excerpt: string;
   readTime?: string;
   author?: string;
+  mediumUrl?: string;
+  coverImage?: string;
 }): Promise<{
   success: boolean;
   message: string;
   article: Article;
   isUpdate: boolean;
 }> {
-  const { title, slug, originalSlug, content, tags, excerpt } = payload;
+  const { title, slug, originalSlug, content, tags, excerpt, mediumUrl, coverImage } = payload;
   const readTime = payload.readTime || calculateReadTime(content);
   const author = payload.author || 'Atiendriya Verma';
 
@@ -149,6 +159,8 @@ export async function saveArticle(payload: {
       excerpt: excerpt.trim() || existing.excerpt,
       readTime,
       author,
+      mediumUrl: mediumUrl !== undefined ? mediumUrl : existing.mediumUrl,
+      coverImage: coverImage !== undefined ? coverImage : existing.coverImage,
       publishedAt: new Date().toISOString(),
     };
     articlesCache[existingIndex] = updatedArticle;
@@ -164,6 +176,8 @@ export async function saveArticle(payload: {
       readTime,
       author,
       content: content.trim(),
+      mediumUrl,
+      coverImage,
       publishedAt: new Date().toISOString(),
     };
     articlesCache = [updatedArticle, ...articlesCache];
