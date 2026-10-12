@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Article } from '@/lib/types';
 import { PythonConsole } from './PythonConsole';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface ArticleReaderProps {
   article: Article;
@@ -39,6 +40,7 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
 }) => {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [fontSizeClass, setFontSizeClass] = useState<'text-base' | 'text-lg' | 'text-xl'>('text-lg');
+  const [fontFamily, setFontFamily] = useState<string>(article.fontFamily || 'newsreader');
   const [copiedLink, setCopiedLink] = useState(false);
   const [claps, setClaps] = useState(14);
   const [hasClapped, setHasClapped] = useState(false);
@@ -57,6 +59,7 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
     setEditTitle(article.title);
     setEditExcerpt(article.excerpt);
     setEditContent(article.content);
+    if (article.fontFamily) setFontFamily(article.fontFamily);
     setIsInlineEditing(false);
   }, [article]);
 
@@ -157,30 +160,51 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
 
           {/* Reader Controls */}
           <div className="flex items-center gap-2 sm:gap-3 text-xs text-[#78716c]">
-            {/* Font size toggle */}
+            {/* Typography Controls: Font Family and Size */}
             {!isInlineEditing && (
-              <div className="flex items-center border border-[#d6d3d1] bg-white p-0.5">
-                <button
-                  onClick={() => setFontSizeClass('text-base')}
-                  className={`px-2 py-0.5 text-xs cursor-pointer ${fontSizeClass === 'text-base' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
-                  title="Standard typography size"
-                >
-                  A
-                </button>
-                <button
-                  onClick={() => setFontSizeClass('text-lg')}
-                  className={`px-2 py-0.5 text-sm font-medium cursor-pointer ${fontSizeClass === 'text-lg' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
-                  title="Medium typography size"
-                >
-                  A+
-                </button>
-                <button
-                  onClick={() => setFontSizeClass('text-xl')}
-                  className={`px-2 py-0.5 text-base font-semibold cursor-pointer ${fontSizeClass === 'text-xl' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
-                  title="Large typography size"
-                >
-                  A++
-                </button>
+              <div className="flex items-center gap-2">
+                {/* Font family selector */}
+                <div className="hidden sm:flex items-center gap-1 border border-[#d6d3d1] bg-white px-2 py-0.5">
+                  <Type className="w-3 h-3 text-[#78716c]" />
+                  <select
+                    value={fontFamily}
+                    onChange={(e) => setFontFamily(e.target.value)}
+                    className="text-[11px] font-mono text-[#1c1917] bg-transparent focus:outline-none cursor-pointer"
+                    title="Switch Reading Font"
+                  >
+                    <option value="newsreader">Newsreader</option>
+                    <option value="inter">Inter (Sans)</option>
+                    <option value="merriweather">Merriweather</option>
+                    <option value="lora">Lora</option>
+                    <option value="georgia">Georgia</option>
+                    <option value="fira-code">Fira Code</option>
+                  </select>
+                </div>
+
+                {/* Font size toggle */}
+                <div className="flex items-center border border-[#d6d3d1] bg-white p-0.5">
+                  <button
+                    onClick={() => setFontSizeClass('text-base')}
+                    className={`px-2 py-0.5 text-xs cursor-pointer ${fontSizeClass === 'text-base' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
+                    title="Standard typography size"
+                  >
+                    A
+                  </button>
+                  <button
+                    onClick={() => setFontSizeClass('text-lg')}
+                    className={`px-2 py-0.5 text-sm font-medium cursor-pointer ${fontSizeClass === 'text-lg' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
+                    title="Medium typography size"
+                  >
+                    A+
+                  </button>
+                  <button
+                    onClick={() => setFontSizeClass('text-xl')}
+                    className={`px-2 py-0.5 text-base font-semibold cursor-pointer ${fontSizeClass === 'text-xl' ? 'bg-[#1c1917] text-white' : 'text-[#78716c]'}`}
+                    title="Large typography size"
+                  >
+                    A++
+                  </button>
+                </div>
               </div>
             )}
 
@@ -425,97 +449,12 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
               ))}
             </div>
 
-            {/* Body Rendered with Clean Markdown Formatting */}
-            <div className={`font-serif text-[#292524] ${fontSizeClass} leading-[1.85] space-y-6`}>
-              {article.content.split('\n\n').map((block, idx) => {
-                const trimmed = block.trim();
-
-                if (trimmed.startsWith('# ')) {
-                  return (
-                    <h1 key={idx} className="text-2xl sm:text-3xl font-serif font-bold text-[#1c1917] mt-12 mb-4 pt-6 border-t border-[#e7e5e4]">
-                      {trimmed.replace('# ', '')}
-                    </h1>
-                  );
-                }
-                if (trimmed.startsWith('## ')) {
-                  return (
-                    <h2 key={idx} className="text-xl sm:text-2xl font-serif font-bold text-[#1c1917] mt-10 mb-3">
-                      {trimmed.replace('## ', '')}
-                    </h2>
-                  );
-                }
-                if (trimmed.startsWith('### ')) {
-                  return (
-                    <h3 key={idx} className="text-lg sm:text-xl font-serif font-semibold text-[#1c1917] mt-8 mb-2">
-                      {trimmed.replace('### ', '')}
-                    </h3>
-                  );
-                }
-                if (trimmed.startsWith('> ')) {
-                  return (
-                    <blockquote key={idx} className="border-l-3 border-[#1c1917] pl-6 my-6 font-serif italic text-[#44403c] bg-[#f5f4ef]/50 py-3">
-                      {trimmed.replace(/^>\s*/, '')}
-                    </blockquote>
-                  );
-                }
-                if (trimmed.startsWith('```')) {
-                  return <PythonConsole key={idx} code={trimmed} />;
-                }
-                if (trimmed.startsWith('|')) {
-                  const rows = trimmed.split('\n').filter(r => !r.includes('---'));
-                  return (
-                    <div key={idx} className="my-8 overflow-x-auto">
-                      <table className="w-full text-left font-sans-clean text-xs border border-[#e7e5e4]">
-                        <tbody>
-                          {rows.map((row, rIdx) => {
-                            const cols = row.split('|').filter(c => c.trim().length > 0);
-                            return (
-                              <tr key={rIdx} className={rIdx === 0 ? 'bg-[#f5f5f4] font-semibold text-[#1c1917] border-b border-[#e7e5e4]' : 'border-b border-[#e7e5e4] hover:bg-white'}>
-                                {cols.map((col, cIdx) => (
-                                  <td key={cIdx} className="p-3">
-                                    {col.trim()}
-                                  </td>
-                                ))}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                }
-                if (trimmed.startsWith('* ') || trimmed.startsWith('- ') || trimmed.startsWith('1. ')) {
-                  const listItems = trimmed.split('\n');
-                  return (
-                    <ul key={idx} className="space-y-2 text-[#44403c] my-4 pl-4 list-disc font-serif">
-                      {listItems.map((li, lIdx) => (
-                        <li key={lIdx} className="leading-relaxed">
-                          {li.replace(/^(\*|-|\d+\.)\s*/, '')}
-                        </li>
-                      ))}
-                    </ul>
-                  );
-                }
-                if (trimmed === '---') {
-                  return <hr key={idx} className="my-10 border-[#e7e5e4]" />;
-                }
-
-                // Parse inline markdown
-                const formatted = trimmed
-                  .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-[#0a66c2] underline hover:text-[#084e96] font-medium">$1</a>')
-                  .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-[#1c1917]">$1</strong>')
-                  .replace(/\*([^*]+)\*/g, '<em class="italic text-[#44403c]">$1</em>')
-                  .replace(/`([^`]+)`/g, '<code class="bg-[#e7e5e4] px-1 py-0.5 text-xs font-mono text-[#1c1917]">$1</code>');
-
-                return (
-                  <p
-                    key={idx}
-                    className="leading-relaxed text-[#292524]"
-                    dangerouslySetInnerHTML={{ __html: formatted }}
-                  />
-                );
-              })}
-            </div>
+            {/* Body Rendered with Unified High-Fidelity MarkdownRenderer */}
+            <MarkdownRenderer
+              content={article.content}
+              fontFamily={fontFamily}
+              fontSize={fontSizeClass === 'text-lg' ? 'lg' : fontSizeClass === 'text-xl' ? 'xl' : 'base'}
+            />
           </>
         )}
 

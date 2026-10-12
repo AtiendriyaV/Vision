@@ -105,6 +105,8 @@ app.post('/api/publish', async (req, res) => {
       readTime,
       author: payload.author || 'Atiendriya Verma',
       mediumUrl: payload.mediumUrl,
+      fontFamily: payload.fontFamily,
+      fontSize: payload.fontSize,
     });
 
     res.json(result);

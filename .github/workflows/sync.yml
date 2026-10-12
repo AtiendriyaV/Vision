@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   git-sync:
@@ -15,6 +16,23 @@ jobs:
           fetch-depth: 0
 
       - name: Push to Clone Repo
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          DESTINATION_REPO: ${{ secrets.DESTINATION_REPO || secrets.TARGET_REPO || secrets.CLONE_REPO }}
         run: |
-          git remote add clone https://${{ secrets.SYNC_TOKEN }}@://github.com
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "::error::SYNC_TOKEN secret is required."
+            exit 1
+          fi
+
+          REPO_TARGET="${DESTINATION_REPO}"
+          if [ -z "$REPO_TARGET" ]; then
+            echo "::error::DESTINATION_REPO secret is required (e.g. username/repo-name or full GitHub URL)."
+            exit 1
+          fi
+
+          # Clean repo path if full URL was provided
+          CLEAN_PATH=$(echo "$REPO_TARGET" | sed -E 's#^https?://github.com/##' | sed -E 's#\.git$##')
+
+          git remote add clone "https://x-access-token:${SYNC_TOKEN}@github.com/${CLEAN_PATH}.git"
           git push clone main --force

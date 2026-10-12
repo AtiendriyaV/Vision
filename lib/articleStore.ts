@@ -120,13 +120,15 @@ export async function saveArticle(payload: {
   author?: string;
   mediumUrl?: string;
   coverImage?: string;
+  fontFamily?: string;
+  fontSize?: string;
 }): Promise<{
   success: boolean;
   message: string;
   article: Article;
   isUpdate: boolean;
 }> {
-  const { title, slug, originalSlug, content, tags, excerpt, mediumUrl, coverImage } = payload;
+  const { title, slug, originalSlug, content, tags, excerpt, mediumUrl, coverImage, fontFamily, fontSize } = payload;
   const readTime = payload.readTime || calculateReadTime(content);
   const author = payload.author || 'Atiendriya Verma';
 
@@ -161,6 +163,8 @@ export async function saveArticle(payload: {
       author,
       mediumUrl: mediumUrl !== undefined ? mediumUrl : existing.mediumUrl,
       coverImage: coverImage !== undefined ? coverImage : existing.coverImage,
+      fontFamily: fontFamily !== undefined ? fontFamily : existing.fontFamily,
+      fontSize: fontSize !== undefined ? fontSize : existing.fontSize,
       publishedAt: new Date().toISOString(),
     };
     articlesCache[existingIndex] = updatedArticle;
@@ -178,6 +182,8 @@ export async function saveArticle(payload: {
       content: content.trim(),
       mediumUrl,
       coverImage,
+      fontFamily,
+      fontSize,
       publishedAt: new Date().toISOString(),
     };
     articlesCache = [updatedArticle, ...articlesCache];

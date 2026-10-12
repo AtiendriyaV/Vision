@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { 
   Lock, 
   Send, 
@@ -15,10 +15,22 @@ import {
   ShieldCheck, 
   Trash2, 
   LogOut,
-  Sparkles
+  Sparkles,
+  Bold,
+  Italic,
+  Link as LinkIcon,
+  Type,
+  Heading1,
+  Heading2,
+  Heading3,
+  List,
+  ListOrdered,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { Article } from '@/lib/types';
 import { PythonConsole } from './PythonConsole';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface AdminPortalProps {
   onArticlePublished: (article?: Article) => void;
@@ -75,6 +87,19 @@ Summarize your variants perceptions and conclusions in three clear points.
     message: string;
     slug?: string;
   }>({ type: 'idle', message: '' });
+
+  // Font family and Font size customization
+  const [fontFamily, setFontFamily] = useState<string>(initialArticle?.fontFamily || 'newsreader');
+  const [fontSize, setFontSize] = useState<string>(initialArticle?.fontSize || 'base');
+
+  // Interactive link modal states
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
+  const [linkFormat, setLinkFormat] = useState<'linkTag' | 'markdown'>('linkTag');
+
+  // Textarea reference for precise cursor insertions and shortcut handling
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Password gate states for unauthenticated access
   const [gatePassword, setGatePassword] = useState('');
@@ -195,6 +220,8 @@ Summarize your variants perceptions and conclusions in three clear points.
           readTime: stats.readTime,
           passcode: 'Vermakk@1972',
           author: 'Atiendriya Verma',
+          fontFamily,
+          fontSize,
         }),
       });
 
@@ -252,8 +279,95 @@ Summarize your variants perceptions and conclusions in three clear points.
     }
   };
 
+  // Cursor and selection-aware formatting helpers
+  const formatSelection = (prefix: string, suffix: string, defaultText = '') => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setContent((prev) => prev + prefix + defaultText + suffix);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = content.substring(start, end) || defaultText;
+    const replacement = `${prefix}${selectedText}${suffix}`;
+    const newContent = content.substring(0, start) + replacement + content.substring(end);
+    setContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+    }, 10);
+  };
+
   const insertSnippet = (snippet: string) => {
-    setContent((prev) => prev + '\n\n' + snippet);
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setContent((prev) => prev + '\n\n' + snippet);
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const newContent = content.substring(0, start) + snippet + content.substring(end);
+    setContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      const pos = start + snippet.length;
+      textarea.setSelectionRange(pos, pos);
+    }, 10);
+  };
+
+  const handleBold = () => formatSelection('**', '**', 'bold text');
+  const handleItalic = () => formatSelection('*', '*', 'italic text');
+  const handleHeading = (level: 1 | 2 | 3) => {
+    const prefix = '#'.repeat(level) + ' ';
+    formatSelection(`\n${prefix}`, '\n', `Heading ${level}`);
+  };
+  const handleBulletList = () => formatSelection('\n* ', '\n', 'List item');
+  const handleNumberedList = () => formatSelection('\n1. ', '\n', 'List item');
+  const handleQuote = () => formatSelection('\n> ', '\n', 'Quote text here...');
+
+  const handleOpenLinkModal = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      const selected = content.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+      if (selected.startsWith('http://') || selected.startsWith('https://')) {
+        setLinkUrl(selected);
+        setLinkTitle('');
+      } else if (selected) {
+        setLinkTitle(selected);
+        setLinkUrl('');
+      }
+    }
+    setShowLinkModal(true);
+  };
+
+  const handleConfirmInsertLink = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!linkUrl.trim()) return;
+    let url = linkUrl.trim();
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/')) {
+      url = `https://${url}`;
+    }
+    const title = linkTitle.trim() || url;
+    const tag = linkFormat === 'linkTag'
+      ? `<Link url="${url}" title="${title}"/>`
+      : `[${title}](${url})`;
+    insertSnippet(tag);
+    setShowLinkModal(false);
+    setLinkUrl('');
+    setLinkTitle('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      handleBold();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+      e.preventDefault();
+      handleItalic();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      handleOpenLinkModal();
+    }
   };
 
   // If not admin, require password verification first
@@ -564,33 +678,181 @@ Summarize your variants perceptions and conclusions in three clear points.
             </div>
           </div>
 
-          {/* Quick formatting toolbar */}
-          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#f5f5f4] text-xs">
-            <span className="text-[11px] font-mono text-[#78716c] mr-2">Quick Inserts:</span>
-            <button
-              onClick={() => insertSnippet('### Key Takeaway\nSummarize the main insight or conclusion here in 1-2 clear sentences...')}
-              className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-sans-clean flex items-center gap-1 cursor-pointer"
-            >
-              <FileText className="w-3 h-3" /> Key Takeaway
-            </button>
-            <button
-              onClick={() => insertSnippet('> "Quote or variant perception thesis note here..."')}
-              className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-serif flex items-center gap-1 cursor-pointer"
-            >
-              <Quote className="w-3 h-3" /> Quote Callout
-            </button>
-            <button
-              onClick={() => insertSnippet('| Metric | 2024A | 2025E | 2026E |\n| :--- | :--- | :--- | :--- |\n| Revenue (Cr) | 1,200 | 1,540 | 1,920 |\n| ROIC (%) | 18.5% | 21.0% | 23.4% |')}
-              className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer"
-            >
-              <Table className="w-3 h-3" /> Valuation Table
-            </button>
-            <button
-              onClick={() => insertSnippet('```python\n# Calculate implied cost of equity using CAPM\nrisk_free = 0.071  # 10-Yr Indian G-Sec\nmarket_risk_premium = 0.055\nbeta = 1.15\n\ncost_of_equity = risk_free + (beta * market_risk_premium)\nprint(f"Cost of Equity: {cost_of_equity:.2%}")\n```')}
-              className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer"
-            >
-              <span className="font-bold text-emerald-700">Py</span> Python Model
-            </button>
+          {/* Comprehensive Rich Formatting & Typography Toolbar */}
+          <div className="pt-3 border-t border-[#f5f5f4] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+              {/* Left group: Formatting controls */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {/* Bold */}
+                <button
+                  type="button"
+                  onClick={handleBold}
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Bold (Ctrl+B)"
+                >
+                  <Bold className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Italic */}
+                <button
+                  type="button"
+                  onClick={handleItalic}
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Italic (Ctrl+I)"
+                >
+                  <Italic className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Insert Working Link */}
+                <button
+                  type="button"
+                  onClick={handleOpenLinkModal}
+                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-pointer flex items-center gap-1 font-mono text-[11px] font-medium transition-colors"
+                  title="Insert Working Link (Ctrl+K)"
+                >
+                  <LinkIcon className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Insert Link</span>
+                </button>
+
+                <span className="text-[#d6d3d1] mx-0.5">|</span>
+
+                {/* Heading levels */}
+                <button
+                  type="button"
+                  onClick={() => handleHeading(1)}
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
+                  title="Heading 1 (#)"
+                >
+                  H1
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleHeading(2)}
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
+                  title="Heading 2 (##)"
+                >
+                  H2
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleHeading(3)}
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
+                  title="Heading 3 (###)"
+                >
+                  H3
+                </button>
+
+                <span className="text-[#d6d3d1] mx-0.5">|</span>
+
+                {/* Quote and Lists */}
+                <button
+                  type="button"
+                  onClick={handleQuote}
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Blockquote (>)"
+                >
+                  <Quote className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulletList}
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Bullet list (*)"
+                >
+                  <List className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNumberedList}
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Numbered list (1.)"
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Right group: Typography & Sizing Selection */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Choose Font */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#78716c] flex items-center gap-1">
+                    <Type className="w-3.5 h-3.5 text-[#1c1917]" />
+                    Font:
+                  </span>
+                  <select
+                    value={fontFamily}
+                    onChange={(e) => setFontFamily(e.target.value)}
+                    className="bg-white border border-[#d6d3d1] hover:border-[#1c1917] px-2 py-1 text-xs font-mono text-[#1c1917] focus:outline-none focus:border-[#1c1917] cursor-pointer transition-colors shadow-2xs"
+                    title="Choose Font Family for Article"
+                  >
+                    <option value="newsreader">Newsreader (Editorial Serif)</option>
+                    <option value="inter">Inter (Clean Modern Sans)</option>
+                    <option value="merriweather">Merriweather (Literary Serif)</option>
+                    <option value="lora">Lora (Contemporary Serif)</option>
+                    <option value="georgia">Georgia (Classic Editorial)</option>
+                    <option value="fira-code">Fira Code (Technical Monospace)</option>
+                  </select>
+                </div>
+
+                {/* Choose Font Size */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#78716c]">
+                    Size:
+                  </span>
+                  <select
+                    value={fontSize}
+                    onChange={(e) => setFontSize(e.target.value)}
+                    className="bg-white border border-[#d6d3d1] hover:border-[#1c1917] px-2 py-1 text-xs font-mono text-[#1c1917] focus:outline-none focus:border-[#1c1917] cursor-pointer transition-colors shadow-2xs"
+                    title="Choose Body Typography Size"
+                  >
+                    <option value="sm">Compact (14px)</option>
+                    <option value="base">Standard (16px)</option>
+                    <option value="lg">Reading (18px)</option>
+                    <option value="xl">Large (20px)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick financial and structured inserts */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#f5f5f4] text-xs">
+              <span className="text-[11px] font-mono text-[#78716c] mr-1">Quick Templates:</span>
+              <button
+                type="button"
+                onClick={() => insertSnippet('### Key Takeaway\nSummarize the main insight or conclusion here in 1-2 clear sentences...')}
+                className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-sans-clean flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <FileText className="w-3 h-3" /> Key Takeaway
+              </button>
+              <button
+                type="button"
+                onClick={() => insertSnippet('> "Quote or variant perception thesis note here..."')}
+                className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-serif flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Quote className="w-3 h-3" /> Quote Callout
+              </button>
+              <button
+                type="button"
+                onClick={() => insertSnippet('| Metric | 2024A | 2025E | 2026E |\n| :--- | :--- | :--- | :--- |\n| Revenue (Cr) | 1,200 | 1,540 | 1,920 |\n| ROIC (%) | 18.5% | 21.0% | 23.4% |')}
+                className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Table className="w-3 h-3" /> Valuation Table
+              </button>
+              <button
+                type="button"
+                onClick={() => insertSnippet('```python\n# Calculate implied cost of equity using CAPM\nrisk_free = 0.071  # 10-Yr Indian G-Sec\nmarket_risk_premium = 0.055\nbeta = 1.15\n\ncost_of_equity = risk_free + (beta * market_risk_premium)\nprint(f"Cost of Equity: {cost_of_equity:.2%}")\n```')}
+                className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <span className="font-bold text-emerald-700">Py</span> Python Model
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenLinkModal}
+                className="px-2 py-1 bg-white hover:bg-[#f5f5f4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors ml-auto"
+              >
+                <LinkIcon className="w-3 h-3 text-[#0a66c2]" /> Mention Link
+              </button>
+            </div>
           </div>
         </div>
 
@@ -604,26 +866,39 @@ Summarize your variants perceptions and conclusions in three clear points.
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Markdown Editor</span>
                 </div>
-                <span className="text-[11px] font-mono">Supports Markdown & Python snippets</span>
+                <div className="flex items-center gap-3 text-[11px] font-mono">
+                  <span>Ctrl+B Bold</span>
+                  <span>·</span>
+                  <span>Ctrl+I Italic</span>
+                  <span>·</span>
+                  <span>Ctrl+K Link</span>
+                </div>
               </div>
               <textarea
+                ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Write your research thesis in Markdown..."
                 className="w-full flex-1 p-5 font-mono text-sm leading-relaxed text-[#1c1917] resize-none focus:outline-none min-h-[500px]"
               />
             </div>
           )}
 
-          {/* Live Editorial Preview */}
+          {/* Live Editorial Preview with Interactive Working Links */}
           {(activeTab === 'split' || activeTab === 'preview') && (
             <div className={`flex flex-col bg-white border border-[#e7e5e4] overflow-y-auto ${activeTab === 'preview' ? 'md:col-span-2' : ''}`}>
               <div className="bg-[#f5f5f4] border-b border-[#e7e5e4] px-4 py-2.5 flex items-center justify-between text-xs text-[#78716c]">
                 <div className="flex items-center gap-1.5 font-medium text-[#1c1917]">
                   <Eye className="w-3.5 h-3.5" />
                   <span>Live Preview</span>
+                  <span className="text-[11px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 font-mono">Interactive</span>
                 </div>
-                <span className="text-[11px]">Editorial Newsreader Font</span>
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span className="capitalize">{fontFamily}</span>
+                  <span>·</span>
+                  <span className="uppercase">{fontSize}</span>
+                </div>
               </div>
 
               <div className="p-8 max-w-prose mx-auto w-full">
@@ -639,35 +914,141 @@ Summarize your variants perceptions and conclusions in three clear points.
                   </p>
                 )}
 
-                <div className="font-serif text-[#292524] text-base leading-relaxed space-y-4">
-                  {content.split('\n\n').map((block, i) => {
-                    if (block.startsWith('# ')) {
-                      return <h1 key={i} className="text-xl font-serif font-bold text-[#1c1917] mt-6 mb-2">{block.replace('# ', '')}</h1>;
-                    }
-                    if (block.startsWith('## ')) {
-                      return <h2 key={i} className="text-lg font-serif font-bold text-[#1c1917] mt-5 mb-2">{block.replace('## ', '')}</h2>;
-                    }
-                    if (block.startsWith('### ')) {
-                      return <h3 key={i} className="text-base font-serif font-semibold text-[#1c1917] mt-4 mb-2">{block.replace('### ', '')}</h3>;
-                    }
-                    if (block.startsWith('> ')) {
-                      return (
-                        <blockquote key={i} className="border-l-2 border-[#1c1917] pl-4 italic text-[#57534e] my-3">
-                          {block.replace(/^>\s*/, '')}
-                        </blockquote>
-                      );
-                    }
-                    if (block.startsWith('```')) {
-                      return <PythonConsole key={i} code={block} />;
-                    }
-                    return <p key={i} className="leading-relaxed whitespace-pre-line">{block}</p>;
-                  })}
-                </div>
+                {/* Rendered Body with Full Interactive Links & Selected Typography */}
+                <MarkdownRenderer
+                  content={content}
+                  fontFamily={fontFamily}
+                  fontSize={fontSize}
+                />
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Interactive Link Insertion Modal */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white border border-[#e7e5e4] shadow-2xl p-6 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-[#e7e5e4] mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-[#f5f5f4] text-[#1c1917] border border-[#d6d3d1]">
+                  <LinkIcon className="w-4 h-4 text-[#0a66c2]" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-base text-[#1c1917]">Insert Working Link</h3>
+                  <p className="text-[11px] text-[#78716c]">Links will render clickable in Preview & Reader</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="p-1 text-[#78716c] hover:text-[#1c1917] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmInsertLink} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#78716c] mb-1">
+                  Destination URL *
+                </label>
+                <input
+                  type="text"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://example.com/article..."
+                  autoFocus
+                  required
+                  className="w-full px-3 py-2 border border-[#d6d3d1] focus:outline-none focus:border-[#1c1917] font-mono text-xs"
+                />
+                <span className="text-[10px] text-[#78716c] mt-0.5 block">
+                  e.g., https://www.business-standard.com/...
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#78716c] mb-1">
+                  Link Text / Anchor Title
+                </label>
+                <input
+                  type="text"
+                  value={linkTitle}
+                  onChange={(e) => setLinkTitle(e.target.value)}
+                  placeholder="e.g. Read the announcement coverage"
+                  className="w-full px-3 py-2 border border-[#d6d3d1] focus:outline-none focus:border-[#1c1917] text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[#78716c] mb-1.5">
+                  Insertion Syntax
+                </label>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setLinkFormat('linkTag')}
+                    className={`p-2 border text-left cursor-pointer transition-colors ${
+                      linkFormat === 'linkTag'
+                        ? 'border-[#1c1917] bg-[#f5f5f4] font-medium'
+                        : 'border-[#e7e5e4] bg-white text-[#57534e]'
+                    }`}
+                  >
+                    <div className="font-mono text-[11px] font-semibold text-[#1c1917]">&lt;Link /&gt; Tag</div>
+                    <div className="text-[10px] text-[#78716c] mt-0.5">&lt;Link url="..." title="..." /&gt;</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLinkFormat('markdown')}
+                    className={`p-2 border text-left cursor-pointer transition-colors ${
+                      linkFormat === 'markdown'
+                        ? 'border-[#1c1917] bg-[#f5f5f4] font-medium'
+                        : 'border-[#e7e5e4] bg-white text-[#57534e]'
+                    }`}
+                  >
+                    <div className="font-mono text-[11px] font-semibold text-[#1c1917]">Markdown</div>
+                    <div className="text-[10px] text-[#78716c] mt-0.5">[Anchor Text](url)</div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Real-time Preview of the link */}
+              {linkUrl.trim() && (
+                <div className="p-2.5 bg-[#f5f5f4] border border-[#e7e5e4] text-xs">
+                  <div className="text-[10px] font-mono text-[#78716c] uppercase mb-1">Live Clickable Preview:</div>
+                  <a
+                    href={linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[#0a66c2] hover:text-[#084e96] underline font-medium inline-flex items-center gap-1"
+                  >
+                    <span>{linkTitle.trim() || linkUrl}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#f5f5f4]">
+                <button
+                  type="button"
+                  onClick={() => setShowLinkModal(false)}
+                  className="px-3 py-1.5 text-xs text-[#78716c] hover:text-[#1c1917] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!linkUrl.trim()}
+                  className="px-4 py-1.5 bg-[#1c1917] hover:bg-black disabled:bg-[#78716c] text-white text-xs font-medium uppercase tracking-wider cursor-pointer transition-colors"
+                >
+                  Insert Link
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
