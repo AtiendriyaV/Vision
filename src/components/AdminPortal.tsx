@@ -117,6 +117,27 @@ Summarize your variants perceptions and conclusions in three clear points.
     }
   };
 
+  // Auto-normalize any legacy internal markers or accidental typing glitches in content
+  useEffect(() => {
+    setContent((prev) => {
+      if (
+        prev.includes('BOLD_START') ||
+        prev.includes('BOLD_END') ||
+        prev.includes('ITALIC_START') ||
+        prev.includes('CODE_START') ||
+        /^th#+/m.test(prev)
+      ) {
+        return prev
+          .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+          .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+          .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+          .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+          .replace(/^th#+\s*/gm, '# ');
+      }
+      return prev;
+    });
+  }, []);
+
   // Password gate states for unauthenticated access
   const [gatePassword, setGatePassword] = useState('');
   const [showGatePassword, setShowGatePassword] = useState(false);
@@ -317,7 +338,11 @@ Summarize your variants perceptions and conclusions in three clear points.
     const { start, end } = getSelectionRange();
 
     if (start !== end) {
-      const selected = content.substring(start, end);
+      const rawSelected = content.substring(start, end);
+      const selected = rawSelected
+        .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '$1')
+        .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+        .replace(/^th#+\s*/i, '# ');
 
       // Check if selected is already a bolded heading, e.g. '# **Title**'
       const headingBoldMatch = selected.match(/^(#{1,6}\s+)\*\*([\s\S]+?)\*\*$/);
@@ -449,7 +474,11 @@ Summarize your variants perceptions and conclusions in three clear points.
     const { start, end } = getSelectionRange();
 
     if (start !== end) {
-      const selected = content.substring(start, end);
+      const rawSelected = content.substring(start, end);
+      const selected = rawSelected
+        .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '$1')
+        .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+        .replace(/^th#+\s*/i, '# ');
 
       // Check if selected starts/ends with * (and not **)
       if (selected.startsWith('*') && selected.endsWith('*') && !selected.startsWith('**') && selected.length >= 2) {

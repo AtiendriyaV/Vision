@@ -71,6 +71,12 @@ function renderFormattedInline(text: string): React.ReactNode {
 
   let processed = text;
 
+  // Normalize legacy or raw token markers if present in user draft
+  processed = processed.replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '@@BOLD_START@@$1@@BOLD_END@@');
+  processed = processed.replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '@@ITALIC_START@@$1@@ITALIC_END@@');
+  processed = processed.replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '@@CODE_START@@$1@@CODE_END@@');
+  processed = processed.replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '');
+
   // 1. Match custom <Link ... /> tags (self-closing or with children)
   processed = processed.replace(/<Link\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/Link>)/gi, (fullMatch, attrs, innerText) => {
     const urlMatch = attrs.match(/(?:url|href)=["']([^"']+)["']/i);
@@ -216,8 +222,21 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         const block = rawBlock.trim();
         if (!block) return null;
 
-        // Check for Headings: supports '# ', '## ', '### ', '#### ', as well as '#**Title**' or '**# Title**'
-        const headingMatch = block.match(/^(?:\*\*)?(#{1,4})\s*(.*?)(?:\*\*)?$/s);
+        // Clean up accidental typo 'th#' and normalize any legacy tokens in the block
+        let cleanBlock = block;
+        if (/^th#+\s*/i.test(cleanBlock)) {
+          cleanBlock = cleanBlock.replace(/^th#+\s*/i, '# ');
+        }
+        cleanBlock = cleanBlock.replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**');
+        cleanBlock = cleanBlock.replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '');
+
+        // If the entire heading is wrapped in outer asterisks: e.g. **# Title**
+        if (cleanBlock.startsWith('**') && cleanBlock.endsWith('**') && cleanBlock.length > 4) {
+          cleanBlock = cleanBlock.slice(2, -2).trim();
+        }
+
+        // Check for Headings: supports '# ', '## ', '### ', '#### ', and '#**Title**'
+        const headingMatch = cleanBlock.match(/^(#{1,6})(?:\s+|\s*(?=\*\*))([\s\S]+)$/);
         if (headingMatch) {
           const level = headingMatch[1].length;
           const headingText = headingMatch[2].trim();
@@ -260,6 +279,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
               >
                 {renderFormattedInline(headingText)}
               </h4>
+            );
+          }
+          if (level >= 5) {
+            return (
+              <h5
+                key={blockIdx}
+                className="text-sm sm:text-base font-serif font-semibold text-[#1c1917] mt-4 mb-2"
+              >
+                {renderFormattedInline(headingText)}
+              </h5>
             );
           }
         }
