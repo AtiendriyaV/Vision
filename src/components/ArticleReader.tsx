@@ -128,16 +128,30 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
         console.warn('Could not parse JSON response from /api/publish:', parseErr);
       }
 
-      if (res.ok && data?.success && data.article) {
+      const updatedArticle: Article = data?.article || {
+        ...article,
+        title: editTitle.trim(),
+        content: editContent.trim(),
+        excerpt: editExcerpt.trim() || editContent.slice(0, 160).replace(/[#*`_]/g, '') + '...',
+      };
+
+      try {
+        const storedStr = localStorage.getItem('atiendriya_local_articles');
+        const storedArticles: Article[] = storedStr ? JSON.parse(storedStr) : [];
+        const filtered = storedArticles.filter((a) => a.slug !== article.slug);
+        localStorage.setItem('atiendriya_local_articles', JSON.stringify([updatedArticle, ...filtered]));
+      } catch {}
+
+      if (res.ok && data?.success) {
         setSaveToast('Article updated successfully!');
-        setIsInlineEditing(false);
-        if (onArticleUpdated) {
-          onArticleUpdated(data.article);
-        }
-        setTimeout(() => setSaveToast(''), 3000);
       } else {
-        alert(data?.message || data?.error || `Failed to save changes (HTTP ${res.status}).`);
+        setSaveToast('Article saved locally!');
       }
+      setIsInlineEditing(false);
+      if (onArticleUpdated) {
+        onArticleUpdated(updatedArticle);
+      }
+      setTimeout(() => setSaveToast(''), 3000);
     } catch (err: any) {
       alert(err.message || 'Error saving article.');
     } finally {

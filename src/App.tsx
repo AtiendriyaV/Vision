@@ -14,7 +14,21 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'about' | 'write' | 'article'>('home');
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
-  const [articles, setArticles] = useState<Article[]>(SEED_ARTICLES);
+  const [articles, setArticles] = useState<Article[]>(() => {
+    try {
+      const localStr = localStorage.getItem('atiendriya_local_articles');
+      if (localStr) {
+        const localArticles: Article[] = JSON.parse(localStr);
+        if (Array.isArray(localArticles) && localArticles.length > 0) {
+          return [
+            ...localArticles,
+            ...SEED_ARTICLES.filter((s) => !localArticles.some((l) => l.slug === s.slug)),
+          ];
+        }
+      }
+    } catch {}
+    return SEED_ARTICLES;
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   // Default mode is viewer active mode unless authorized with password
@@ -24,20 +38,50 @@ export default function App() {
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
   const [pendingEditArticle, setPendingEditArticle] = useState<Article | null>(null);
 
-  // Load articles from backend storage
+  // Load articles from backend storage and merge with client durable storage
   const loadArticles = useCallback(async (forceRevalidate = false) => {
     setIsLoading(true);
     try {
       const url = forceRevalidate ? '/api/articles?revalidate=true' : '/api/articles';
       const res = await fetch(url);
+      let serverArticles: Article[] = [];
       if (res.ok) {
-        const data = await res.json();
-        if (data.articles && data.articles.length > 0) {
-          setArticles(data.articles);
+        const raw = await res.text();
+        const data = raw ? JSON.parse(raw) : null;
+        if (data?.articles && data.articles.length > 0) {
+          serverArticles = data.articles;
         }
       }
+
+      // Merge with any local articles from browser localStorage
+      let localArticles: Article[] = [];
+      try {
+        const localStr = localStorage.getItem('atiendriya_local_articles');
+        if (localStr) {
+          localArticles = JSON.parse(localStr);
+        }
+      } catch {}
+
+      const baseList = serverArticles.length > 0 ? serverArticles : SEED_ARTICLES;
+      const combined = [
+        ...localArticles,
+        ...baseList.filter((b) => !localArticles.some((l) => l.slug === b.slug)),
+      ];
+      setArticles(combined);
     } catch (err) {
-      console.warn('Using seeded articles due to network fallback:', err);
+      console.warn('Network issue fetching articles, checking local store:', err);
+      try {
+        const localStr = localStorage.getItem('atiendriya_local_articles');
+        if (localStr) {
+          const localArticles: Article[] = JSON.parse(localStr);
+          if (localArticles.length > 0) {
+            setArticles((prev) => [
+              ...localArticles,
+              ...prev.filter((p) => !localArticles.some((l) => l.slug === p.slug)),
+            ]);
+          }
+        }
+      } catch {}
     } finally {
       setIsLoading(false);
     }

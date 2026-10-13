@@ -25,6 +25,17 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
 
+// CORS middleware & preflight handler
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // System health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -61,7 +72,7 @@ app.get('/api/articles/:slug', async (req, res) => {
 
 // Verify Admin Passcode or auto-check
 app.post('/api/verify-key', (req, res) => {
-  const { passcode } = req.body;
+  const { passcode } = req.body || {};
   const configuredKey = process.env.ADMIN_SECRET_KEY || 'Vermakk@1972';
   if (!passcode || passcode.trim() !== configuredKey.trim()) {
     return res.status(401).json({ success: false, message: 'Invalid Admin Password' });
@@ -69,8 +80,8 @@ app.post('/api/verify-key', (req, res) => {
   return res.json({ success: true, message: 'Authorized' });
 });
 
-// Publish or Update article
-app.post('/api/publish', async (req, res) => {
+// Reusable Publish or Update article handler
+async function handlePublishRequest(req: express.Request, res: express.Response) {
   try {
     const payload: PublishArticlePayload & { originalSlug?: string; passcode?: string } = req.body || {};
     let { title, slug, originalSlug, content, tags, excerpt, passcode } = payload;
@@ -122,7 +133,7 @@ app.post('/api/publish', async (req, res) => {
     const result = await saveArticle({
       title,
       slug: cleanSlug,
-      originalSlug: originalSlug?.trim(),
+      originalSlug: originalSlug?.trim() || (req.params?.slug ? req.params.slug.trim() : undefined),
       content,
       tags: finalTags,
       excerpt: finalExcerpt,
@@ -141,7 +152,13 @@ app.post('/api/publish', async (req, res) => {
       message: err?.message || 'Internal server error during publishing',
     });
   }
-});
+}
+
+// Publish or Update article endpoints (supports POST, PUT, PATCH)
+app.post('/api/publish', handlePublishRequest);
+app.put('/api/publish', handlePublishRequest);
+app.post('/api/articles', handlePublishRequest);
+app.put('/api/articles/:slug', handlePublishRequest);
 
 // Synchronize / Export Medium Articles
 app.post('/api/sync-medium', async (req, res) => {
@@ -170,6 +187,11 @@ app.delete('/api/articles/:slug', async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+// Ensure any unknown /api/* requests return JSON rather than falling through to static/Vite which causes 405 Method Not Allowed
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ success: false, error: `Endpoint ${req.method} ${req.path} not found` });
 });
 
 // Setup Vite middleware in dev or static files in production

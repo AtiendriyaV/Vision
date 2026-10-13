@@ -71,11 +71,13 @@ function renderFormattedInline(text: string): React.ReactNode {
 
   let processed = text;
 
-  // Normalize legacy or raw token markers if present in user draft
+  // Normalize legacy or raw token markers or accidental prefixes if present in user draft
   processed = processed.replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '@@BOLD_START@@$1@@BOLD_END@@');
   processed = processed.replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '@@ITALIC_START@@$1@@ITALIC_END@@');
   processed = processed.replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '@@CODE_START@@$1@@CODE_END@@');
   processed = processed.replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '');
+  processed = processed.replace(/^th#+\s*/i, '');
+  processed = processed.replace(/\bth#+\s*/gi, '');
 
   // 1. Match custom <Link ... /> tags (self-closing or with children)
   processed = processed.replace(/<Link\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/Link>)/gi, (fullMatch, attrs, innerText) => {
@@ -233,11 +235,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
         // Clean up accidental typo 'th#' and normalize any legacy tokens in the block
         let cleanBlock = block;
-        if (/^th#+\s*/i.test(cleanBlock)) {
-          cleanBlock = cleanBlock.replace(/^th#+\s*/i, '# ');
-        }
-        cleanBlock = cleanBlock.replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**');
-        cleanBlock = cleanBlock.replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '');
+        cleanBlock = cleanBlock
+          .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+          .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+          .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+          .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+          .replace(/^th#+\s*/i, '# ')
+          .replace(/\bth#+\s*/gi, '# ')
+          // If accidental outer asterisks like '****# Title' or '**# Title**'
+          .replace(/^\*{2,4}\s*(#{1,6}\s+)([\s\S]*?)\*{0,4}$/, '$1$2')
+          .replace(/^(#{1,6}\s+)\*{2,4}\s*([\s\S]*?)\*{2,4}$/, '$1**$2**');
 
         // If the entire heading is wrapped in outer asterisks: e.g. **# Title**
         if (cleanBlock.startsWith('**') && cleanBlock.endsWith('**') && cleanBlock.length > 4) {
