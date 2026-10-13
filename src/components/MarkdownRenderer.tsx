@@ -213,8 +213,17 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   const fontClass = getFontFamilyClass(fontFamily);
   const sizeClass = getFontSizeClass(fontSize);
 
+  // Thoroughly normalize legacy tokens or accidental th# artifacts across entire content
+  const normalizedContent = content
+    .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+    .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+    .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+    .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+    .replace(/^th#+\s*/gim, '# ')
+    .replace(/\bth#+\s*/gim, '# ');
+
   // Split into top-level blocks by double newline
-  const blocks = content.split(/\n\n+/);
+  const blocks = normalizedContent.split(/\n\n+/);
 
   return (
     <div className={`${fontClass} ${sizeClass} text-[#292524] space-y-5 ${className}`}>
@@ -404,7 +413,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         // Standard Paragraph
         return (
           <p key={blockIdx} className="leading-relaxed whitespace-pre-line">
-            {renderFormattedInline(block)}
+            {renderFormattedInline(cleanBlock)}
           </p>
         );
       })}

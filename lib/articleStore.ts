@@ -129,7 +129,21 @@ export async function saveArticle(payload: {
   isUpdate: boolean;
 }> {
   const { title, slug, originalSlug, content, tags, excerpt, mediumUrl, coverImage, fontFamily, fontSize } = payload;
-  const readTime = payload.readTime || calculateReadTime(content);
+  const cleanContent = content
+    .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+    .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+    .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+    .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+    .replace(/^th#+\s*/gm, '# ')
+    .trim();
+
+  const cleanTitle = title
+    .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '$1')
+    .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+    .replace(/^th#+\s*/i, '')
+    .trim();
+
+  const readTime = payload.readTime || calculateReadTime(cleanContent);
   const author = payload.author || 'Atiendriya Verma';
 
   const cleanSlug = slug
@@ -154,9 +168,9 @@ export async function saveArticle(payload: {
     const existing = articlesCache[existingIndex];
     updatedArticle = {
       ...existing,
-      title: title.trim(),
+      title: cleanTitle,
       slug: cleanSlug,
-      content: content.trim(),
+      content: cleanContent,
       tags: tags && tags.length > 0 ? tags : existing.tags,
       excerpt: excerpt.trim() || existing.excerpt,
       readTime,
@@ -172,14 +186,14 @@ export async function saveArticle(payload: {
   } else {
     // Insert new article at the top
     updatedArticle = {
-      title: title.trim(),
+      title: cleanTitle,
       slug: cleanSlug,
       date: formatArticleDate(),
       excerpt: excerpt.trim(),
       tags: tags && tags.length > 0 ? tags : ['Equity Research'],
       readTime,
       author,
-      content: content.trim(),
+      content: cleanContent,
       mediumUrl,
       coverImage,
       fontFamily,

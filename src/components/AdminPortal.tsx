@@ -41,6 +41,17 @@ interface AdminPortalProps {
   onSetAdmin: (val: boolean) => void;
 }
 
+function cleanLegacyArtifacts(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+    .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+    .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+    .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+    .replace(/^th#+\s*/gim, '# ')
+    .replace(/\bth#+\s*/gim, '# ');
+}
+
 export const AdminPortal: React.FC<AdminPortalProps> = ({
   onArticlePublished,
   onReturnHome,
@@ -50,14 +61,15 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   onSetAdmin,
 }) => {
   // Form states - initialized with initialArticle if provided
-  const [title, setTitle] = useState(initialArticle?.title || '');
+  const [title, setTitle] = useState(() => cleanLegacyArtifacts(initialArticle?.title || ''));
   const [slug, setSlug] = useState(initialArticle?.slug || '');
   const [tagsInput, setTagsInput] = useState(
     initialArticle?.tags ? initialArticle.tags.join(', ') : 'Indian Economy, Finance, Macroeconomics'
   );
-  const [excerpt, setExcerpt] = useState(initialArticle?.excerpt || '');
-  const [content, setContent] = useState(
-    initialArticle?.content || `# Enter Your Research Thesis Title Here
+  const [excerpt, setExcerpt] = useState(() => cleanLegacyArtifacts(initialArticle?.excerpt || ''));
+  const [content, setContent] = useState(() =>
+    cleanLegacyArtifacts(
+      initialArticle?.content || `# Enter Your Research Thesis Title Here
 
 ### Executive Summary & Context
 Frame the core macroeconomic thesis or valuation question clearly for the reader...
@@ -75,6 +87,7 @@ Examine cash flow sensitivities, cost of capital assumptions, and downside buffe
 ## Key Takeaways
 Summarize your variants perceptions and conclusions in three clear points.
 `
+    )
   );
 
   const isEditingExisting = Boolean(initialArticle);
@@ -119,24 +132,16 @@ Summarize your variants perceptions and conclusions in three clear points.
 
   // Auto-normalize any legacy internal markers or accidental typing glitches in content
   useEffect(() => {
-    setContent((prev) => {
-      if (
-        prev.includes('BOLD_START') ||
-        prev.includes('BOLD_END') ||
-        prev.includes('ITALIC_START') ||
-        prev.includes('CODE_START') ||
-        /^th#+/m.test(prev)
-      ) {
-        return prev
-          .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
-          .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
-          .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
-          .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
-          .replace(/^th#+\s*/gm, '# ');
-      }
-      return prev;
-    });
-  }, []);
+    if (
+      content.includes('BOLD_START') ||
+      content.includes('BOLD_END') ||
+      content.includes('ITALIC_START') ||
+      content.includes('CODE_START') ||
+      /th#+/i.test(content)
+    ) {
+      setContent((prev) => cleanLegacyArtifacts(prev));
+    }
+  }, [content]);
 
   // Password gate states for unauthenticated access
   const [gatePassword, setGatePassword] = useState('');
@@ -222,11 +227,24 @@ Summarize your variants perceptions and conclusions in three clear points.
   };
 
   const handlePublish = async () => {
-    if (!title.trim()) {
-      setPublishResult({ type: 'error', message: 'Article title is required.' });
+    // 1. Auto-extract effective title from content if title input was left empty
+    let effectiveTitle = title.trim();
+    if (!effectiveTitle) {
+      const headingMatch = content.match(/^#\s+(.+)$/m);
+      if (headingMatch) {
+        effectiveTitle = headingMatch[1].replace(/[*_`]/g, '').trim();
+        setTitle(effectiveTitle);
+      }
+    }
+    effectiveTitle = cleanLegacyArtifacts(effectiveTitle);
+
+    if (!effectiveTitle) {
+      setPublishResult({ type: 'error', message: 'Article title is required. Please enter a title or start with # Your Title.' });
       return;
     }
-    if (!content.trim()) {
+
+    const cleanContent = cleanLegacyArtifacts(content.trim());
+    if (!cleanContent) {
       setPublishResult({ type: 'error', message: 'Article content cannot be empty.' });
       return;
     }
@@ -242,18 +260,22 @@ Summarize your variants perceptions and conclusions in three clear points.
 
       const cleanSlug =
         slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') ||
-        title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        effectiveTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+      const cleanExcerpt = cleanLegacyArtifacts(
+        excerpt.trim() || cleanContent.slice(0, 160).replace(/[#*`_]/g, '') + '...'
+      );
 
       const res = await fetch('/api/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: title.trim(),
+          title: effectiveTitle,
           slug: cleanSlug,
           originalSlug: initialArticle?.slug,
-          content: content.trim(),
-          tags,
-          excerpt: excerpt.trim() || content.slice(0, 160).replace(/[#*`_]/g, '') + '...',
+          content: cleanContent,
+          tags: tags.length > 0 ? tags : ['Equity Research'],
+          excerpt: cleanExcerpt,
           readTime: stats.readTime,
           passcode: 'Vermakk@1972',
           author: 'Atiendriya Verma',
@@ -262,9 +284,17 @@ Summarize your variants perceptions and conclusions in three clear points.
         }),
       });
 
-      const data = await res.json();
+      // Safely parse JSON response body to prevent "Unexpected end of JSON input" syntax error
+      let data: any = null;
+      let rawText = '';
+      try {
+        rawText = await res.text();
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (parseErr) {
+        console.warn('Could not parse JSON response from /api/publish:', parseErr, rawText);
+      }
 
-      if (res.ok && data.success) {
+      if (res.ok && data?.success) {
         setPublishResult({
           type: 'success',
           message: data.message || (isEditingExisting ? 'Article updated successfully!' : 'Article published successfully!'),
@@ -275,9 +305,18 @@ Summarize your variants perceptions and conclusions in three clear points.
           onArticlePublished(data.article);
         }
       } else {
+        const errorMsg =
+          data?.message ||
+          data?.error ||
+          (res.status === 401
+            ? 'Unauthorized: Invalid Admin Password'
+            : res.status >= 500
+            ? `Server error during publish (HTTP ${res.status}). Please verify server status.`
+            : `Publishing failed (HTTP ${res.status || 'network error'}).`);
+
         setPublishResult({
           type: 'error',
-          message: data.message || 'Failed to save article.',
+          message: errorMsg,
         });
       }
     } catch (err: any) {

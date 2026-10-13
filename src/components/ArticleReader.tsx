@@ -119,8 +119,16 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (res.ok && data.success && data.article) {
+      let data: any = null;
+      let rawText = '';
+      try {
+        rawText = await res.text();
+        data = rawText ? JSON.parse(rawText) : null;
+      } catch (parseErr) {
+        console.warn('Could not parse JSON response from /api/publish:', parseErr);
+      }
+
+      if (res.ok && data?.success && data.article) {
         setSaveToast('Article updated successfully!');
         setIsInlineEditing(false);
         if (onArticleUpdated) {
@@ -128,7 +136,7 @@ export const ArticleReader: React.FC<ArticleReaderProps> = ({
         }
         setTimeout(() => setSaveToast(''), 3000);
       } else {
-        alert(data.message || 'Failed to save changes.');
+        alert(data?.message || data?.error || `Failed to save changes (HTTP ${res.status}).`);
       }
     } catch (err: any) {
       alert(err.message || 'Error saving article.');

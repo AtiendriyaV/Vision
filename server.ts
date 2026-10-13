@@ -72,19 +72,43 @@ app.post('/api/verify-key', (req, res) => {
 // Publish or Update article
 app.post('/api/publish', async (req, res) => {
   try {
-    const payload: PublishArticlePayload & { originalSlug?: string; passcode?: string } = req.body;
-    const { title, slug, originalSlug, content, tags, excerpt, passcode } = payload;
+    const payload: PublishArticlePayload & { originalSlug?: string; passcode?: string } = req.body || {};
+    let { title, slug, originalSlug, content, tags, excerpt, passcode } = payload;
 
     const configuredKey = process.env.ADMIN_SECRET_KEY || 'Vermakk@1972';
     if (passcode && passcode.trim() !== configuredKey.trim()) {
       return res.status(401).json({ success: false, message: 'Unauthorized: Invalid Admin Password' });
     }
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Article title is required' });
-    }
     if (!content || !content.trim()) {
       return res.status(400).json({ success: false, message: 'Article content cannot be empty' });
+    }
+
+    // Auto-extract title from content if not provided
+    if (!title || !title.trim()) {
+      const headingMatch = content.match(/^#\s+(.+)$/m);
+      if (headingMatch) {
+        title = headingMatch[1].replace(/[*_`]/g, '').trim();
+      }
+    }
+
+    // Sanitize any legacy tokens in title and content
+    title = (title || '')
+      .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '$1')
+      .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+      .replace(/^th#+\s*/i, '')
+      .trim();
+
+    content = content
+      .replace(/_{2,4}BOLD_START_{2,4}([\s\S]*?)_{2,4}BOLD_END_{2,4}/gi, '**$1**')
+      .replace(/_{2,4}ITALIC_START_{2,4}([\s\S]*?)_{2,4}ITALIC_END_{2,4}/gi, '*$1*')
+      .replace(/_{2,4}CODE_START_{2,4}([\s\S]*?)_{2,4}CODE_END_{2,4}/gi, '`$1`')
+      .replace(/_{2,4}(BOLD|ITALIC|CODE)_(START|END)_{2,4}/gi, '')
+      .replace(/^th#+\s*/gm, '# ')
+      .trim();
+
+    if (!title) {
+      return res.status(400).json({ success: false, message: 'Article title is required' });
     }
 
     const cleanSlug =
@@ -96,10 +120,10 @@ app.post('/api/publish', async (req, res) => {
     const finalExcerpt = excerpt?.trim() || content.slice(0, 160).replace(/[#*`_]/g, '') + '...';
 
     const result = await saveArticle({
-      title: title.trim(),
+      title,
       slug: cleanSlug,
       originalSlug: originalSlug?.trim(),
-      content: content.trim(),
+      content,
       tags: finalTags,
       excerpt: finalExcerpt,
       readTime,
