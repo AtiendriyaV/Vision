@@ -100,6 +100,22 @@ Summarize your variants perceptions and conclusions in three clear points.
 
   // Textarea reference for precise cursor insertions and shortcut handling
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [selectedTextSnippet, setSelectedTextSnippet] = useState<string>('');
+
+  const updateSelectionTracker = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    lastSelectionRef.current = { start, end };
+    if (start !== end) {
+      const sel = el.value.substring(start, end).trim();
+      setSelectedTextSnippet(sel.length > 32 ? sel.slice(0, 30) + '…' : sel);
+    } else {
+      setSelectedTextSnippet('');
+    }
+  };
 
   // Password gate states for unauthenticated access
   const [gatePassword, setGatePassword] = useState('');
@@ -279,22 +295,390 @@ Summarize your variants perceptions and conclusions in three clear points.
     }
   };
 
-  // Cursor and selection-aware formatting helpers
-  const formatSelection = (prefix: string, suffix: string, defaultText = '') => {
+  // Helper to reliably get current selection from textarea or last recorded selection
+  const getSelectionRange = (): { start: number; end: number } => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      setContent((prev) => prev + prefix + defaultText + suffix);
-      return;
+    if (!textarea) return lastSelectionRef.current;
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : lastSelectionRef.current.start;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : lastSelectionRef.current.end;
+    return { start, end };
+  };
+
+  /**
+   * Bolds the selected text.
+   * - If text is selected: wraps the selected text in `**...**`.
+   *   If already wrapped or surrounded by `**`, unbolds it (toggles off).
+   * - If no text is selected: bolds the word under cursor if present;
+   *   otherwise inserts `****` with cursor in the middle without writing any placeholder words!
+   */
+  const handleBold = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    if (start !== end) {
+      const selected = content.substring(start, end);
+
+      // Check if selected itself starts and ends with ** (length >= 4)
+      if (selected.startsWith('**') && selected.endsWith('**') && selected.length >= 4) {
+        const unwrapped = selected.slice(2, -2);
+        const newContent = content.substring(0, start) + unwrapped + content.substring(end);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start + unwrapped.length);
+          lastSelectionRef.current = { start, end: start + unwrapped.length };
+          updateSelectionTracker();
+        }, 10);
+        return;
+      }
+
+      // Check if surrounding characters outside selection are **
+      if (
+        start >= 2 &&
+        end + 2 <= content.length &&
+        content.substring(start - 2, start) === '**' &&
+        content.substring(end, end + 2) === '**'
+      ) {
+        const newContent = content.substring(0, start - 2) + selected + content.substring(end + 2);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start - 2, start - 2 + selected.length);
+          lastSelectionRef.current = { start: start - 2, end: start - 2 + selected.length };
+          updateSelectionTracker();
+        }, 10);
+        return;
+      }
+
+      // Wrap the exact selected text in **
+      const bolded = `**${selected}**`;
+      const newContent = content.substring(0, start) + bolded + content.substring(end);
+      setContent(newContent);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start, start + bolded.length);
+        lastSelectionRef.current = { start, end: start + bolded.length };
+        updateSelectionTracker();
+      }, 10);
+    } else {
+      // Cursor is collapsed: check if on a word
+      const isWordChar = (char: string) => /[a-zA-Z0-9_\u00C0-\u024F]/.test(char);
+      let wordStart = start;
+      let wordEnd = start;
+      while (wordStart > 0 && isWordChar(content[wordStart - 1])) {
+        wordStart--;
+      }
+      while (wordEnd < content.length && isWordChar(content[wordEnd])) {
+        wordEnd++;
+      }
+
+      if (wordStart < wordEnd) {
+        const word = content.substring(wordStart, wordEnd);
+        if (
+          wordStart >= 2 &&
+          wordEnd + 2 <= content.length &&
+          content.substring(wordStart - 2, wordStart) === '**' &&
+          content.substring(wordEnd, wordEnd + 2) === '**'
+        ) {
+          const newContent = content.substring(0, wordStart - 2) + word + content.substring(wordEnd + 2);
+          setContent(newContent);
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(wordStart - 2, wordStart - 2 + word.length);
+            lastSelectionRef.current = { start: wordStart - 2, end: wordStart - 2 + word.length };
+            updateSelectionTracker();
+          }, 10);
+          return;
+        }
+
+        const bolded = `**${word}**`;
+        const newContent = content.substring(0, wordStart) + bolded + content.substring(wordEnd);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(wordStart, wordStart + bolded.length);
+          lastSelectionRef.current = { start: wordStart, end: wordStart + bolded.length };
+          updateSelectionTracker();
+        }, 10);
+      } else {
+        // Empty space: insert **** and place cursor inside without writing "bold text"
+        const newContent = content.substring(0, start) + '****' + content.substring(start);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + 2, start + 2);
+          lastSelectionRef.current = { start: start + 2, end: start + 2 };
+          updateSelectionTracker();
+        }, 10);
+      }
     }
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = content.substring(start, end) || defaultText;
-    const replacement = `${prefix}${selectedText}${suffix}`;
-    const newContent = content.substring(0, start) + replacement + content.substring(end);
+  };
+
+  /**
+   * Italicizes the selected text.
+   * - If text is selected: wraps in `*...*` (or unwraps if already italic).
+   * - If cursor on word: italicizes that word.
+   * - If empty space: inserts `**` and positions cursor inside without writing "italic text"!
+   */
+  const handleItalic = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    if (start !== end) {
+      const selected = content.substring(start, end);
+
+      // Check if selected starts/ends with * (and not **)
+      if (selected.startsWith('*') && selected.endsWith('*') && !selected.startsWith('**') && selected.length >= 2) {
+        const unwrapped = selected.slice(1, -1);
+        const newContent = content.substring(0, start) + unwrapped + content.substring(end);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start + unwrapped.length);
+          lastSelectionRef.current = { start, end: start + unwrapped.length };
+          updateSelectionTracker();
+        }, 10);
+        return;
+      }
+
+      // Check if surrounding characters are *
+      if (
+        start >= 1 &&
+        end + 1 <= content.length &&
+        content[start - 1] === '*' &&
+        content[end] === '*' &&
+        content.substring(start - 2, start) !== '**'
+      ) {
+        const newContent = content.substring(0, start - 1) + selected + content.substring(end + 1);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start - 1, start - 1 + selected.length);
+          lastSelectionRef.current = { start: start - 1, end: start - 1 + selected.length };
+          updateSelectionTracker();
+        }, 10);
+        return;
+      }
+
+      const italicized = `*${selected}*`;
+      const newContent = content.substring(0, start) + italicized + content.substring(end);
+      setContent(newContent);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start, start + italicized.length);
+        lastSelectionRef.current = { start, end: start + italicized.length };
+        updateSelectionTracker();
+      }, 10);
+    } else {
+      const isWordChar = (char: string) => /[a-zA-Z0-9_\u00C0-\u024F]/.test(char);
+      let wordStart = start;
+      let wordEnd = start;
+      while (wordStart > 0 && isWordChar(content[wordStart - 1])) {
+        wordStart--;
+      }
+      while (wordEnd < content.length && isWordChar(content[wordEnd])) {
+        wordEnd++;
+      }
+
+      if (wordStart < wordEnd) {
+        const word = content.substring(wordStart, wordEnd);
+        if (
+          wordStart >= 1 &&
+          wordEnd + 1 <= content.length &&
+          content[wordStart - 1] === '*' &&
+          content[wordEnd] === '*' &&
+          content.substring(wordStart - 2, wordStart) !== '**'
+        ) {
+          const newContent = content.substring(0, wordStart - 1) + word + content.substring(wordEnd + 1);
+          setContent(newContent);
+          setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(wordStart - 1, wordStart - 1 + word.length);
+            lastSelectionRef.current = { start: wordStart - 1, end: wordStart - 1 + word.length };
+            updateSelectionTracker();
+          }, 10);
+          return;
+        }
+
+        const italicized = `*${word}*`;
+        const newContent = content.substring(0, wordStart) + italicized + content.substring(wordEnd);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(wordStart, wordStart + italicized.length);
+          lastSelectionRef.current = { start: wordStart, end: wordStart + italicized.length };
+          updateSelectionTracker();
+        }, 10);
+      } else {
+        const newContent = content.substring(0, start) + '**' + content.substring(start);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + 1, start + 1);
+          lastSelectionRef.current = { start: start + 1, end: start + 1 };
+          updateSelectionTracker();
+        }, 10);
+      }
+    }
+  };
+
+  /**
+   * Turns the selected text or current line into a Heading (H1, H2, or H3).
+   * - Does NOT write "Heading 1" or placeholder text.
+   * - If line already is this heading level, toggles it off.
+   * - If line is different heading level, upgrades/downgrades to target level.
+   * - If empty line, prefixes with `# ` so author can type immediately.
+   */
+  const handleHeading = (level: 1 | 2 | 3) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    let lineStart = content.lastIndexOf('\n', start - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
+    let lineEnd = content.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = content.length;
+
+    const currentLinesText = content.substring(lineStart, lineEnd);
+    const targetPrefix = '#'.repeat(level) + ' ';
+
+    const lines = currentLinesText.split('\n');
+    const modifiedLines = lines.map((line) => {
+      const trimmed = line.trimStart();
+      const headingMatch = trimmed.match(/^(#{1,6})\s+/);
+
+      if (headingMatch) {
+        const currentLevel = headingMatch[1].length;
+        const textWithoutHeading = trimmed.replace(/^#{1,6}\s+/, '');
+        if (currentLevel === level) {
+          // Toggle OFF
+          return textWithoutHeading;
+        } else {
+          // Change to new level
+          return targetPrefix + textWithoutHeading;
+        }
+      } else {
+        if (!trimmed) {
+          return targetPrefix;
+        }
+        return targetPrefix + trimmed;
+      }
+    });
+
+    const newLinesText = modifiedLines.join('\n');
+    const newContent = content.substring(0, lineStart) + newLinesText + content.substring(lineEnd);
+    setContent(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      const newEnd = lineStart + newLinesText.length;
+      textarea.setSelectionRange(lineStart, newEnd);
+      lastSelectionRef.current = { start: lineStart, end: newEnd };
+      updateSelectionTracker();
+    }, 10);
+  };
+
+  const handleQuote = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    let lineStart = content.lastIndexOf('\n', start - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
+    let lineEnd = content.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = content.length;
+
+    const currentLinesText = content.substring(lineStart, lineEnd);
+    const lines = currentLinesText.split('\n');
+    const allQuotes = lines.every((l) => l.trimStart().startsWith('>'));
+
+    const modifiedLines = lines.map((line) => {
+      if (allQuotes) {
+        return line.replace(/^\s*>\s?/, '');
+      } else {
+        const trimmed = line.replace(/^\s*>\s?/, '');
+        return trimmed ? `> ${trimmed}` : '> ';
+      }
+    });
+
+    const newLinesText = modifiedLines.join('\n');
+    const newContent = content.substring(0, lineStart) + newLinesText + content.substring(lineEnd);
     setContent(newContent);
     setTimeout(() => {
       textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selectedText.length);
+      textarea.setSelectionRange(lineStart, lineStart + newLinesText.length);
+      lastSelectionRef.current = { start: lineStart, end: lineStart + newLinesText.length };
+      updateSelectionTracker();
+    }, 10);
+  };
+
+  const handleBulletList = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    let lineStart = content.lastIndexOf('\n', start - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
+    let lineEnd = content.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = content.length;
+
+    const currentLinesText = content.substring(lineStart, lineEnd);
+    const lines = currentLinesText.split('\n');
+    const allBulleted = lines.every((l) => /^\s*[*+-]\s+/.test(l));
+
+    const modifiedLines = lines.map((line) => {
+      if (allBulleted) {
+        return line.replace(/^\s*[*+-]\s+/, '');
+      } else {
+        const stripped = line.replace(/^\s*[*+-]\s+/, '').replace(/^\s*\d+\.\s+/, '');
+        return stripped ? `* ${stripped}` : '* ';
+      }
+    });
+
+    const newLinesText = modifiedLines.join('\n');
+    const newContent = content.substring(0, lineStart) + newLinesText + content.substring(lineEnd);
+    setContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(lineStart, lineStart + newLinesText.length);
+      lastSelectionRef.current = { start: lineStart, end: lineStart + newLinesText.length };
+      updateSelectionTracker();
+    }, 10);
+  };
+
+  const handleNumberedList = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const { start, end } = getSelectionRange();
+
+    let lineStart = content.lastIndexOf('\n', start - 1);
+    lineStart = lineStart === -1 ? 0 : lineStart + 1;
+    let lineEnd = content.indexOf('\n', end);
+    if (lineEnd === -1) lineEnd = content.length;
+
+    const currentLinesText = content.substring(lineStart, lineEnd);
+    const lines = currentLinesText.split('\n');
+    const allNumbered = lines.every((l) => /^\s*\d+\.\s+/.test(l));
+
+    const modifiedLines = lines.map((line, idx) => {
+      if (allNumbered) {
+        return line.replace(/^\s*\d+\.\s+/, '');
+      } else {
+        const stripped = line.replace(/^\s*[*+-]\s+/, '').replace(/^\s*\d+\.\s+/, '');
+        return stripped ? `${idx + 1}. ${stripped}` : `${idx + 1}. `;
+      }
+    });
+
+    const newLinesText = modifiedLines.join('\n');
+    const newContent = content.substring(0, lineStart) + newLinesText + content.substring(lineEnd);
+    setContent(newContent);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(lineStart, lineStart + newLinesText.length);
+      lastSelectionRef.current = { start: lineStart, end: lineStart + newLinesText.length };
+      updateSelectionTracker();
     }, 10);
   };
 
@@ -304,31 +688,23 @@ Summarize your variants perceptions and conclusions in three clear points.
       setContent((prev) => prev + '\n\n' + snippet);
       return;
     }
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
+    const { start, end } = getSelectionRange();
     const newContent = content.substring(0, start) + snippet + content.substring(end);
     setContent(newContent);
     setTimeout(() => {
       textarea.focus();
       const pos = start + snippet.length;
       textarea.setSelectionRange(pos, pos);
+      lastSelectionRef.current = { start: pos, end: pos };
+      updateSelectionTracker();
     }, 10);
   };
 
-  const handleBold = () => formatSelection('**', '**', 'bold text');
-  const handleItalic = () => formatSelection('*', '*', 'italic text');
-  const handleHeading = (level: 1 | 2 | 3) => {
-    const prefix = '#'.repeat(level) + ' ';
-    formatSelection(`\n${prefix}`, '\n', `Heading ${level}`);
-  };
-  const handleBulletList = () => formatSelection('\n* ', '\n', 'List item');
-  const handleNumberedList = () => formatSelection('\n1. ', '\n', 'List item');
-  const handleQuote = () => formatSelection('\n> ', '\n', 'Quote text here...');
-
   const handleOpenLinkModal = () => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      const selected = content.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+    const { start, end } = getSelectionRange();
+    if (start !== end) {
+      const selected = content.substring(start, end).trim();
       if (selected.startsWith('http://') || selected.startsWith('https://')) {
         setLinkUrl(selected);
         setLinkTitle('');
@@ -351,10 +727,25 @@ Summarize your variants perceptions and conclusions in three clear points.
     const tag = linkFormat === 'linkTag'
       ? `<Link url="${url}" title="${title}"/>`
       : `[${title}](${url})`;
-    insertSnippet(tag);
+
+    const textarea = textareaRef.current;
+    const { start, end } = getSelectionRange();
+    const newContent = content.substring(0, start) + tag + content.substring(end);
+    setContent(newContent);
+
     setShowLinkModal(false);
     setLinkUrl('');
     setLinkTitle('');
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const pos = start + tag.length;
+        textarea.setSelectionRange(pos, pos);
+        lastSelectionRef.current = { start: pos, end: pos };
+        updateSelectionTracker();
+      }
+    }, 10);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -367,6 +758,15 @@ Summarize your variants perceptions and conclusions in three clear points.
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       handleOpenLinkModal();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === '1') {
+      e.preventDefault();
+      handleHeading(1);
+    } else if ((e.ctrlKey || e.metaKey) && e.key === '2') {
+      e.preventDefault();
+      handleHeading(2);
+    } else if ((e.ctrlKey || e.metaKey) && e.key === '3') {
+      e.preventDefault();
+      handleHeading(3);
     }
   };
 
@@ -686,9 +1086,10 @@ Summarize your variants perceptions and conclusions in three clear points.
                 {/* Bold */}
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleBold}
-                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
-                  title="Bold (Ctrl+B)"
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] active:bg-[#d6d3d1] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Bold selected text (Ctrl+B)"
                 >
                   <Bold className="w-3.5 h-3.5" />
                 </button>
@@ -696,9 +1097,10 @@ Summarize your variants perceptions and conclusions in three clear points.
                 {/* Italic */}
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleItalic}
-                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
-                  title="Italic (Ctrl+I)"
+                  className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] active:bg-[#d6d3d1] text-[#1c1917] border border-[#d6d3d1] hover:border-[#1c1917] cursor-pointer flex items-center justify-center transition-colors"
+                  title="Italicize selected text (Ctrl+I)"
                 >
                   <Italic className="w-3.5 h-3.5" />
                 </button>
@@ -706,9 +1108,10 @@ Summarize your variants perceptions and conclusions in three clear points.
                 {/* Insert Working Link */}
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleOpenLinkModal}
                   className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 cursor-pointer flex items-center gap-1 font-mono text-[11px] font-medium transition-colors"
-                  title="Insert Working Link (Ctrl+K)"
+                  title="Insert Working Link to selected text (Ctrl+K)"
                 >
                   <LinkIcon className="w-3.5 h-3.5 text-emerald-700" />
                   <span>Insert Link</span>
@@ -719,25 +1122,28 @@ Summarize your variants perceptions and conclusions in three clear points.
                 {/* Heading levels */}
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleHeading(1)}
-                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
-                  title="Heading 1 (#)"
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] active:bg-[#d6d3d1] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors font-bold"
+                  title="Heading 1 on selected text / current line (Ctrl+1)"
                 >
                   H1
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleHeading(2)}
-                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
-                  title="Heading 2 (##)"
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] active:bg-[#d6d3d1] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors font-bold"
+                  title="Heading 2 on selected text / current line (Ctrl+2)"
                 >
                   H2
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleHeading(3)}
-                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors"
-                  title="Heading 3 (###)"
+                  className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] active:bg-[#d6d3d1] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono cursor-pointer transition-colors font-bold"
+                  title="Heading 3 on selected text / current line (Ctrl+3)"
                 >
                   H3
                 </button>
@@ -747,28 +1153,39 @@ Summarize your variants perceptions and conclusions in three clear points.
                 {/* Quote and Lists */}
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleQuote}
                   className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
-                  title="Blockquote (>)"
+                  title="Blockquote on selection (>)"
                 >
                   <Quote className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleBulletList}
                   className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
-                  title="Bullet list (*)"
+                  title="Bullet list on selection (*)"
                 >
                   <List className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={handleNumberedList}
                   className="p-1.5 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#1c1917] border border-[#d6d3d1] cursor-pointer flex items-center justify-center transition-colors"
-                  title="Numbered list (1.)"
+                  title="Numbered list on selection (1.)"
                 >
                   <ListOrdered className="w-3.5 h-3.5" />
                 </button>
+
+                {/* Selection feedback badge */}
+                {selectedTextSnippet && (
+                  <span className="ml-1 px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 font-mono text-[10px] flex items-center gap-1 animate-in fade-in">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+                    <span>Selected: &ldquo;{selectedTextSnippet}&rdquo;</span>
+                  </span>
+                )}
               </div>
 
               {/* Right group: Typography & Sizing Selection */}
@@ -819,6 +1236,7 @@ Summarize your variants perceptions and conclusions in three clear points.
               <span className="text-[11px] font-mono text-[#78716c] mr-1">Quick Templates:</span>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => insertSnippet('### Key Takeaway\nSummarize the main insight or conclusion here in 1-2 clear sentences...')}
                 className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-sans-clean flex items-center gap-1 cursor-pointer transition-colors"
               >
@@ -826,6 +1244,7 @@ Summarize your variants perceptions and conclusions in three clear points.
               </button>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => insertSnippet('> "Quote or variant perception thesis note here..."')}
                 className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-serif flex items-center gap-1 cursor-pointer transition-colors"
               >
@@ -833,6 +1252,7 @@ Summarize your variants perceptions and conclusions in three clear points.
               </button>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => insertSnippet('| Metric | 2024A | 2025E | 2026E |\n| :--- | :--- | :--- | :--- |\n| Revenue (Cr) | 1,200 | 1,540 | 1,920 |\n| ROIC (%) | 18.5% | 21.0% | 23.4% |')}
                 className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
               >
@@ -840,6 +1260,7 @@ Summarize your variants perceptions and conclusions in three clear points.
               </button>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => insertSnippet('```python\n# Calculate implied cost of equity using CAPM\nrisk_free = 0.071  # 10-Yr Indian G-Sec\nmarket_risk_premium = 0.055\nbeta = 1.15\n\ncost_of_equity = risk_free + (beta * market_risk_premium)\nprint(f"Cost of Equity: {cost_of_equity:.2%}")\n```')}
                 className="px-2 py-1 bg-[#f5f5f4] hover:bg-[#e7e5e4] text-[#44403c] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors"
               >
@@ -847,6 +1268,7 @@ Summarize your variants perceptions and conclusions in three clear points.
               </button>
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleOpenLinkModal}
                 className="px-2 py-1 bg-white hover:bg-[#f5f5f4] text-[#1c1917] border border-[#d6d3d1] text-[11px] font-mono flex items-center gap-1 cursor-pointer transition-colors ml-auto"
               >
@@ -871,13 +1293,21 @@ Summarize your variants perceptions and conclusions in three clear points.
                   <span>·</span>
                   <span>Ctrl+I Italic</span>
                   <span>·</span>
+                  <span>Ctrl+1/2/3 Heading</span>
+                  <span>·</span>
                   <span>Ctrl+K Link</span>
                 </div>
               </div>
               <textarea
                 ref={textareaRef}
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  updateSelectionTracker();
+                }}
+                onSelect={updateSelectionTracker}
+                onKeyUp={updateSelectionTracker}
+                onMouseUp={updateSelectionTracker}
                 onKeyDown={handleKeyDown}
                 placeholder="Write your research thesis in Markdown..."
                 className="w-full flex-1 p-5 font-mono text-sm leading-relaxed text-[#1c1917] resize-none focus:outline-none min-h-[500px]"
