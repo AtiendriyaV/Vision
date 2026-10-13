@@ -319,6 +319,21 @@ Summarize your variants perceptions and conclusions in three clear points.
     if (start !== end) {
       const selected = content.substring(start, end);
 
+      // Check if selected is already a bolded heading, e.g. '# **Title**'
+      const headingBoldMatch = selected.match(/^(#{1,6}\s+)\*\*([\s\S]+?)\*\*$/);
+      if (headingBoldMatch) {
+        const unwrapped = `${headingBoldMatch[1]}${headingBoldMatch[2]}`;
+        const newContent = content.substring(0, start) + unwrapped + content.substring(end);
+        setContent(newContent);
+        setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start, start + unwrapped.length);
+          lastSelectionRef.current = { start, end: start + unwrapped.length };
+          updateSelectionTracker();
+        }, 10);
+        return;
+      }
+
       // Check if selected itself starts and ends with ** (length >= 4)
       if (selected.startsWith('**') && selected.endsWith('**') && selected.length >= 4) {
         const unwrapped = selected.slice(2, -2);
@@ -351,8 +366,15 @@ Summarize your variants perceptions and conclusions in three clear points.
         return;
       }
 
-      // Wrap the exact selected text in **
-      const bolded = `**${selected}**`;
+      // If selected starts with a heading prefix (e.g. '# Title'), keep the prefix at the line start: '# **Title**'
+      let bolded: string;
+      const headingPrefixMatch = selected.match(/^(#{1,6}\s+)([\s\S]+)$/);
+      if (headingPrefixMatch) {
+        bolded = `${headingPrefixMatch[1]}**${headingPrefixMatch[2]}**`;
+      } else {
+        bolded = `**${selected}**`;
+      }
+
       const newContent = content.substring(0, start) + bolded + content.substring(end);
       setContent(newContent);
       setTimeout(() => {
@@ -462,7 +484,15 @@ Summarize your variants perceptions and conclusions in three clear points.
         return;
       }
 
-      const italicized = `*${selected}*`;
+      // If selected starts with a heading prefix (e.g. '# Title'), keep the prefix at the line start: '# *Title*'
+      let italicized: string;
+      const headingPrefixMatch = selected.match(/^(#{1,6}\s+)([\s\S]+)$/);
+      if (headingPrefixMatch) {
+        italicized = `${headingPrefixMatch[1]}*${headingPrefixMatch[2]}*`;
+      } else {
+        italicized = `*${selected}*`;
+      }
+
       const newContent = content.substring(0, start) + italicized + content.substring(end);
       setContent(newContent);
       setTimeout(() => {

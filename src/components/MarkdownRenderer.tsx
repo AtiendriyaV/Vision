@@ -72,7 +72,6 @@ function renderFormattedInline(text: string): React.ReactNode {
   let processed = text;
 
   // 1. Match custom <Link ... /> tags (self-closing or with children)
-  // Handles <Link url="..." title="..." />, <Link href="..." .../>, <Link url="...">text</Link>
   processed = processed.replace(/<Link\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/Link>)/gi, (fullMatch, attrs, innerText) => {
     const urlMatch = attrs.match(/(?:url|href)=["']([^"']+)["']/i);
     const titleMatch = attrs.match(/title=["']([^"']*)["']/i);
@@ -80,48 +79,49 @@ function renderFormattedInline(text: string): React.ReactNode {
     const label = (titleMatch && titleMatch[1]) || (innerText && innerText.trim()) || url;
 
     if (!url) return fullMatch;
-    const token = `__LINK_TOKEN_${linkCounter++}__`;
+    const token = `@@LINK_${linkCounter++}@@`;
     linkStore.push({ id: token, url, label });
     return token;
   });
 
   // 2. Match standard HTML <a href="...">...</a> tags
   processed = processed.replace(/<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, url, label) => {
-    const token = `__LINK_TOKEN_${linkCounter++}__`;
+    const token = `@@LINK_${linkCounter++}@@`;
     linkStore.push({ id: token, url, label: label || url });
     return token;
   });
 
   // 3. Match Markdown links [label](url)
   processed = processed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
-    const token = `__LINK_TOKEN_${linkCounter++}__`;
+    const token = `@@LINK_${linkCounter++}@@`;
     linkStore.push({ id: token, url, label });
     return token;
   });
 
   // 4. Match raw unlinked URLs (e.g. https://... or http://...)
   processed = processed.replace(/(^|[\s(])((https?:\/\/[^\s<)]+))/gi, (match, prefix, rawUrl) => {
-    const token = `__LINK_TOKEN_${linkCounter++}__`;
+    const token = `@@LINK_${linkCounter++}@@`;
     linkStore.push({ id: token, url: rawUrl, label: rawUrl });
     return `${prefix}${token}`;
   });
 
-  // Replace bold & italic with markers
-  // Bold: **text** or <b> / <strong>
-  processed = processed.replace(/\*\*([^*]+)\*\*/g, '___BOLD_START___$1___BOLD_END___');
-  processed = processed.replace(/<b>([\s\S]*?)<\/b>/gi, '___BOLD_START___$1___BOLD_END___');
-  processed = processed.replace(/<strong>([\s\S]*?)<\/strong>/gi, '___BOLD_START___$1___BOLD_END___');
+  // 5. Replace bold: **text** or __text__ or <b> / <strong>
+  processed = processed.replace(/\*\*([^*]+?)\*\*/g, '@@BOLD_START@@$1@@BOLD_END@@');
+  processed = processed.replace(/(?<!\w)__([^_]+?)__(?!\w)/g, '@@BOLD_START@@$1@@BOLD_END@@');
+  processed = processed.replace(/<b>([\s\S]*?)<\/b>/gi, '@@BOLD_START@@$1@@BOLD_END@@');
+  processed = processed.replace(/<strong>([\s\S]*?)<\/strong>/gi, '@@BOLD_START@@$1@@BOLD_END@@');
 
-  // Italic: *text* or <i> / <em>
-  processed = processed.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '___ITALIC_START___$1___ITALIC_END___');
-  processed = processed.replace(/<i>([\s\S]*?)<\/i>/gi, '___ITALIC_START___$1___ITALIC_END___');
-  processed = processed.replace(/<em>([\s\S]*?)<\/em>/gi, '___ITALIC_START___$1___ITALIC_END___');
+  // 6. Replace italic: *text* or _text_ or <i> / <em>
+  processed = processed.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '@@ITALIC_START@@$1@@ITALIC_END@@');
+  processed = processed.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '@@ITALIC_START@@$1@@ITALIC_END@@');
+  processed = processed.replace(/<i>([\s\S]*?)<\/i>/gi, '@@ITALIC_START@@$1@@ITALIC_END@@');
+  processed = processed.replace(/<em>([\s\S]*?)<\/em>/gi, '@@ITALIC_START@@$1@@ITALIC_END@@');
 
-  // Code: `code`
-  processed = processed.replace(/`([^`]+)`/g, '___CODE_START___$1___CODE_END___');
+  // 7. Code: `code`
+  processed = processed.replace(/`([^`]+)`/g, '@@CODE_START@@$1@@CODE_END@@');
 
   // Split into segments and construct React elements
-  const segments = processed.split(/(__(?:LINK_TOKEN_\d+|BOLD_START|BOLD_END|ITALIC_START|ITALIC_END|CODE_START|CODE_END)__)/g);
+  const segments = processed.split(/(@@(?:LINK_\d+|BOLD_START|BOLD_END|ITALIC_START|ITALIC_END|CODE_START|CODE_END)@@)/g);
 
   const elements: React.ReactNode[] = [];
   let isBold = false;
@@ -131,27 +131,27 @@ function renderFormattedInline(text: string): React.ReactNode {
   segments.forEach((seg, index) => {
     if (!seg) return;
 
-    if (seg === '___BOLD_START___') {
+    if (seg === '@@BOLD_START@@') {
       isBold = true;
       return;
     }
-    if (seg === '___BOLD_END___') {
+    if (seg === '@@BOLD_END@@') {
       isBold = false;
       return;
     }
-    if (seg === '___ITALIC_START___') {
+    if (seg === '@@ITALIC_START@@') {
       isItalic = true;
       return;
     }
-    if (seg === '___ITALIC_END___') {
+    if (seg === '@@ITALIC_END@@') {
       isItalic = false;
       return;
     }
-    if (seg === '___CODE_START___') {
+    if (seg === '@@CODE_START@@') {
       isCode = true;
       return;
     }
-    if (seg === '___CODE_END___') {
+    if (seg === '@@CODE_END@@') {
       isCode = false;
       return;
     }
@@ -216,52 +216,52 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         const block = rawBlock.trim();
         if (!block) return null;
 
-        // Heading 1
-        if (block.startsWith('# ')) {
-          return (
-            <h1
-              key={blockIdx}
-              className="text-2xl sm:text-3xl font-serif font-bold text-[#1c1917] mt-8 mb-4 pt-4 border-t border-[#e7e5e4] first:mt-0 first:pt-0 first:border-t-0"
-            >
-              {renderFormattedInline(block.replace(/^#\s+/, ''))}
-            </h1>
-          );
-        }
+        // Check for Headings: supports '# ', '## ', '### ', '#### ', as well as '#**Title**' or '**# Title**'
+        const headingMatch = block.match(/^(?:\*\*)?(#{1,4})\s*(.*?)(?:\*\*)?$/s);
+        if (headingMatch) {
+          const level = headingMatch[1].length;
+          const headingText = headingMatch[2].trim();
 
-        // Heading 2
-        if (block.startsWith('## ')) {
-          return (
-            <h2
-              key={blockIdx}
-              className="text-xl sm:text-2xl font-serif font-bold text-[#1c1917] mt-7 mb-3"
-            >
-              {renderFormattedInline(block.replace(/^##\s+/, ''))}
-            </h2>
-          );
-        }
-
-        // Heading 3
-        if (block.startsWith('### ')) {
-          return (
-            <h3
-              key={blockIdx}
-              className="text-lg sm:text-xl font-serif font-semibold text-[#1c1917] mt-6 mb-2"
-            >
-              {renderFormattedInline(block.replace(/^###\s+/, ''))}
-            </h3>
-          );
-        }
-
-        // Heading 4
-        if (block.startsWith('#### ')) {
-          return (
-            <h4
-              key={blockIdx}
-              className="text-base sm:text-lg font-serif font-semibold text-[#1c1917] mt-5 mb-2"
-            >
-              {renderFormattedInline(block.replace(/^####\s+/, ''))}
-            </h4>
-          );
+          if (level === 1) {
+            return (
+              <h1
+                key={blockIdx}
+                className="text-2xl sm:text-3xl font-serif font-bold text-[#1c1917] mt-8 mb-4 pt-4 border-t border-[#e7e5e4] first:mt-0 first:pt-0 first:border-t-0"
+              >
+                {renderFormattedInline(headingText)}
+              </h1>
+            );
+          }
+          if (level === 2) {
+            return (
+              <h2
+                key={blockIdx}
+                className="text-xl sm:text-2xl font-serif font-bold text-[#1c1917] mt-7 mb-3"
+              >
+                {renderFormattedInline(headingText)}
+              </h2>
+            );
+          }
+          if (level === 3) {
+            return (
+              <h3
+                key={blockIdx}
+                className="text-lg sm:text-xl font-serif font-semibold text-[#1c1917] mt-6 mb-2"
+              >
+                {renderFormattedInline(headingText)}
+              </h3>
+            );
+          }
+          if (level === 4) {
+            return (
+              <h4
+                key={blockIdx}
+                className="text-base sm:text-lg font-serif font-semibold text-[#1c1917] mt-5 mb-2"
+              >
+                {renderFormattedInline(headingText)}
+              </h4>
+            );
+          }
         }
 
         // Blockquote
